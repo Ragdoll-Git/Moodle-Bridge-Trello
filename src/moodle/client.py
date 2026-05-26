@@ -15,6 +15,9 @@ from .models import (
     Course,
     CourseSection,
     CourseModule,
+    CourseAssignments,
+    Assignment,
+    Activity,
     ModuleContent,
     MoodleError,
     SiteInfo,
@@ -194,10 +197,144 @@ class MoodleClient:
         return sections
 
     # ============================================================
+    # API de Moodle: Assignments y Actividades
+    # ============================================================
+
+    def get_assignments(self, course_ids: list[int]) -> list[CourseAssignments]:
+        """
+        Obtiene las tareas (assignments) de los cursos especificados.
+        Usa mod_assign_get_assignments.
+
+        Args:
+            course_ids: Lista de IDs de cursos
+
+        Returns:
+            Lista de CourseAssignments con las tareas por curso
+        """
+        if not course_ids:
+            return []
+
+        logger.info(f"Obteniendo assignments de {len(course_ids)} cursos...")
+
+        # Construir parámetros: courseids[0]=X, courseids[1]=Y, ...
+        params = {}
+        for i, cid in enumerate(course_ids):
+            params[f"courseids[{i}]"] = cid
+
+        data = self._call("mod_assign_get_assignments", params)
+
+        if isinstance(data, dict) and ("exception" in data or "errorcode" in data):
+            error = MoodleError(**data)
+            raise MoodleAPIError(
+                f"Error al obtener assignments: {error.message or error.error}",
+                wsfunction="mod_assign_get_assignments",
+                errorcode=error.errorcode,
+            )
+
+        if not isinstance(data, dict) or "courses" not in data:
+            raise MoodleAPIError(
+                f"Respuesta inesperada de mod_assign_get_assignments: {str(data)[:200]}",
+                wsfunction="mod_assign_get_assignments",
+            )
+
+        courses = [CourseAssignments(**c) for c in data["courses"]]
+
+        total = sum(len(c.assignments) for c in courses)
+        logger.info(f"Se encontraron {total} assignments en {len(courses)} cursos")
+
+        return courses
+
+    def get_assignment_submission_status(self, assign_id: int) -> dict:
+        """
+        Obtiene el estado de entrega de una tarea para el usuario autenticado.
+        Usa mod_assign_get_submission_status.
+
+        Args:
+            assign_id: ID de la tarea (assignment) en Moodle
+
+        Returns:
+            Diccionario con la respuesta de Moodle
+        """
+        logger.debug(f"Obteniendo estado de entrega para assignment {assign_id}...")
+        data = self._call("mod_assign_get_submission_status", {"assignid": assign_id}, ignore_rate_limit=True)
+
+        if isinstance(data, dict) and ("exception" in data or "errorcode" in data):
+            error = MoodleError(**data)
+            raise MoodleAPIError(
+                f"Error al obtener estado de entrega para assignment {assign_id}: {error.message or error.error}",
+                wsfunction="mod_assign_get_submission_status",
+                errorcode=error.errorcode,
+            )
+
+        return data
+
+
+    def get_course_activities(
+        self,
+        course_id: int,
+        course_name: str = "",
+        modnames: list[str] | None = None,
+    ) -> list[Activity]:
+        """
+        Extrae actividades de un curso usando core_course_get_contents.
+        Incluye módulos ocultos (uservisible=false) si Moodle los devuelve.
+
+        Args:
+            course_id: ID del curso
+            course_name: Nombre del curso (para enriquecer el resultado)
+            modnames: Filtrar por tipo de módulo (ej: ["assign", "forum"])
+
+        Returns:
+            Lista de Activity con info de visibilidad
+        """
+        target_mods = set(modnames) if modnames else None
+
+        logger.info(
+            f"Obteniendo actividades del curso {course_id} "
+            f"(filtros: {target_mods or 'todos'})..."
+        )
+
+        sections = self.get_course_contents(course_id)
+        activities: list[Activity] = []
+
+        for section in sections:
+            for module in section.modules:
+                # Filtrar por tipo si se especificó
+                if target_mods and module.modname not in target_mods:
+                    continue
+
+                activity = Activity(
+                    id=module.id,
+                    name=module.name,
+                    modname=module.modname or "",
+                    instance=module.instance,
+                    url=module.url,
+                    visible=module.visible,
+                    uservisible=module.uservisible,
+                    description=module.description,
+                    course_id=course_id,
+                    course_name=course_name,
+                    section_name=section.name,
+                )
+                activities.append(activity)
+
+        logger.info(
+            f"Curso {course_id}: {len(activities)} actividades encontradas "
+            f"({sum(1 for a in activities if a.is_hidden)} ocultas)"
+        )
+
+        return activities
+
+    # ============================================================
     # Llamada genérica a la API con rate limiting
     # ============================================================
 
-    def _call(self, wsfunction: str, params: Optional[dict] = None) -> Any:
+    def _call(
+        self,
+        wsfunction: str,
+        params: Optional[dict] = None,
+        ignore_rate_limit: bool = False,
+    ) -> Any:
         """
         Realiza una llamada a la API REST de Moodle con rate limiting
         y reintentos automáticos.
@@ -205,6 +342,7 @@ class MoodleClient:
         Args:
             wsfunction: Nombre de la función del Web Service
             params: Parámetros adicionales para la función
+            ignore_rate_limit: Si es True, ignora el delay de rate limiting
 
         Returns:
             Respuesta JSON parseada
@@ -216,7 +354,8 @@ class MoodleClient:
             )
 
         # Rate limiting: esperar si es necesario
-        self._rate_limit()
+        if not ignore_rate_limit:
+            self._rate_limit()
 
         # Construir parámetros
         full_params = {

@@ -231,3 +231,96 @@ class CourseContentsResponse(BaseModel):
     total_files: int = 0
     sections: list[CourseSection] = Field(default_factory=list)
     error: Optional[str] = None
+
+
+# ============================================================
+# Modelos de assignments y actividades
+# ============================================================
+
+class Assignment(BaseModel):
+    """Tarea (assign) devuelta por mod_assign_get_assignments"""
+    id: int
+    cmid: int = 0
+    course: int = 0
+    name: str = ""
+    intro: Optional[str] = ""
+    introformat: Optional[int] = None
+    duedate: Optional[int] = None
+    cutoffdate: Optional[int] = None
+    allowsubmissionsfromdate: Optional[int] = None
+    grade: Optional[int] = None
+    timemodified: Optional[int] = None
+    nosubmissions: Optional[int] = None
+    submissiondrafts: Optional[int] = None
+
+    model_config = {"extra": "allow"}
+
+    @property
+    def due_datetime(self) -> Optional[datetime]:
+        """Fecha de entrega como datetime (None si no tiene)"""
+        if self.duedate and self.duedate > 0:
+            return datetime.fromtimestamp(self.duedate)
+        return None
+
+    @property
+    def cutoff_datetime(self) -> Optional[datetime]:
+        """Fecha límite absoluta como datetime"""
+        if self.cutoffdate and self.cutoffdate > 0:
+            return datetime.fromtimestamp(self.cutoffdate)
+        return None
+
+    @property
+    def is_overdue(self) -> bool:
+        """¿Está pasada la fecha de entrega?"""
+        if self.due_datetime:
+            return datetime.now() > self.due_datetime
+        return False
+
+
+class CourseAssignments(BaseModel):
+    """Assignments agrupados por curso (respuesta de mod_assign_get_assignments)"""
+    id: int
+    fullname: str = ""
+    shortname: str = ""
+    assignments: list[Assignment] = Field(default_factory=list)
+
+    model_config = {"extra": "allow"}
+
+
+class Activity(BaseModel):
+    """Actividad genérica extraída de core_course_get_contents"""
+    id: int
+    name: str = ""
+    modname: str = ""  # "assign", "forum", "quiz", etc.
+    instance: Optional[int] = None
+    url: Optional[str] = None
+    visible: Optional[int] = 1
+    uservisible: Optional[bool] = True
+    description: Optional[str] = None
+    course_id: int = 0
+    course_name: str = ""
+    section_name: str = ""
+    # Datos de assignment vinculados (si existe)
+    duedate: Optional[int] = None
+    cutoffdate: Optional[int] = None
+
+    @property
+    def is_hidden(self) -> bool:
+        """¿Es una actividad oculta o con acceso restringido?"""
+        return not self.uservisible or self.visible == 0
+
+    @property
+    def due_datetime(self) -> Optional[datetime]:
+        if self.duedate and self.duedate > 0:
+            return datetime.fromtimestamp(self.duedate)
+        return None
+
+
+class AssignmentsResponse(BaseModel):
+    """Respuesta del bridge con las tareas de Moodle"""
+    success: bool
+    message: str
+    total_assignments: int = 0
+    courses: list[CourseAssignments] = Field(default_factory=list)
+    activities: list[Activity] = Field(default_factory=list)
+    error: Optional[str] = None

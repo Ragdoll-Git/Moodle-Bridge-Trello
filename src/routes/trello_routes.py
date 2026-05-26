@@ -1,54 +1,86 @@
 """
-MoodleAPI-Bridge — Rutas stub para Trello API.
+MoodleAPI-Bridge — Rutas de la API de Trello.
 
-Endpoints preparados para futuras integraciones con Trello.
-Por ahora devuelven respuestas 501 (Not Implemented).
+Endpoints REST para interactuar con Trello: listar boards,
+sincronizar tareas desde Moodle y verificar el estado de la conexión.
 """
 
 import logging
-from fastapi import APIRouter
+from typing import Optional
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
+
+from ..services.bridge import bridge_service
+from ..trello.models import TrelloSyncResult
 
 logger = logging.getLogger("moodle-bridge.routes.trello")
 
-router = APIRouter(prefix="/api/trello", tags=["Trello (Próximamente)"])
+router = APIRouter(prefix="/api/trello", tags=["Trello"])
 
 
-class StubResponse(BaseModel):
-    success: bool = False
-    message: str = ""
-    status: str = "not_implemented"
+# ============================================================
+# Request models
+# ============================================================
+
+class SyncRequest(BaseModel):
+    """Opciones para la sincronización Moodle → Trello"""
+    board_name: Optional[str] = None
+    course_ids: Optional[list[int]] = None
 
 
-@router.post("/sync")
-async def sync_trello():
+# ============================================================
+# Endpoints
+# ============================================================
+
+@router.post("/sync", response_model=TrelloSyncResult)
+async def sync_trello(body: Optional[SyncRequest] = None):
     """
-    [PRÓXIMAMENTE] Crea tarjetas en Trello a partir de las tareas de Moodle.
+    Sincroniza las tareas de Moodle al board de Trello.
 
-    Funcionalidad planificada:
-    - Crear tarjetas por cada tarea/actividad
-    - Sincronizar fechas de entrega
-    - Organización por materia en boards/listas
+    **Comportamiento:**
+    - Busca el board por nombre (default: "Facu")
+    - Crea una lista por cada curso
+    - Crea tarjetas por cada assignment/foro
+    - Si la tarjeta ya existe (por nombre), la actualiza
+
+    **Opciones en el body (todas opcionales):**
+    - `board_name`: Nombre del board de Trello (default: "Facu")
+    - `course_ids`: Lista de IDs de cursos a sincronizar (default: todos)
+
+    **Requiere:**
+    - Autenticación con Moodle (POST /api/moodle/auth)
+    - TRELLO_API_KEY y TRELLO_TOKEN configurados en .env
     """
-    return StubResponse(
-        message="Integración con Trello en desarrollo. "
-        "Configurá TRELLO_API_KEY y TRELLO_TOKEN en .env cuando esté listo.",
+    board_name = body.board_name if body else None
+    course_ids = body.course_ids if body else None
+
+    logger.info(
+        f"Petición de sincronización Trello "
+        f"(board={board_name or 'default'}, courses={course_ids or 'todos'})"
+    )
+
+    return bridge_service.trello_sync_assignments(
+        board_name=board_name,
+        course_ids=course_ids,
     )
 
 
 @router.get("/boards")
 async def list_boards():
     """
-    [PRÓXIMAMENTE] Lista los boards de Trello del usuario.
+    Lista los boards de Trello del usuario autenticado.
+
+    Útil para verificar la conexión y encontrar el board_id/nombre correcto.
     """
-    return StubResponse(
-        message="Trello API no configurada. Endpoint reservado para integración futura.",
-    )
+    logger.info("Petición de listado de boards Trello")
+    return bridge_service.trello_get_boards()
 
 
 @router.get("/status")
 async def trello_status():
-    """Estado de la integración con Trello"""
-    return StubResponse(
-        message="Trello API no configurada. Endpoint reservado para integración futura.",
-    )
+    """
+    Estado de la integración con Trello.
+
+    Verifica si las credenciales están configuradas y si la conexión funciona.
+    """
+    return bridge_service.trello_get_status()

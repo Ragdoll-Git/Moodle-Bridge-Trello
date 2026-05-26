@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from ..services.bridge import bridge_service
-from ..moodle.models import AuthResponse, CoursesResponse, CourseContentsResponse
+from ..moodle.models import AuthResponse, CoursesResponse, CourseContentsResponse, AssignmentsResponse
 
 logger = logging.getLogger("moodle-bridge.routes.moodle")
 
@@ -76,3 +76,22 @@ async def get_course_contents(course_id: int):
     """
     logger.info(f"Petición de contenidos del curso {course_id}")
     return bridge_service.moodle_get_course_contents(course_id)
+
+
+@router.get("/assignments", response_model=AssignmentsResponse)
+async def get_assignments(
+    course_id: Optional[int] = Query(None, description="Filtrar por ID de curso"),
+):
+    """
+    Obtiene las tareas (assignments) y foros de todos los cursos o de uno específico.
+
+    Combina datos de:
+    - `mod_assign_get_assignments` — tareas con fechas de entrega
+    - `core_course_get_contents` — actividades visibles y ocultas (assign + forum)
+
+    Cada assignment incluye: nombre, fecha de entrega, fecha límite, descripción.
+    Las actividades incluyen si están ocultas (`uservisible: false`).
+    """
+    logger.info(f"Petición de assignments (course_id={course_id})")
+    course_ids = [course_id] if course_id else None
+    return bridge_service.moodle_get_assignments(course_ids)

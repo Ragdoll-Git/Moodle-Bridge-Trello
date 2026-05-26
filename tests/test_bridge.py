@@ -34,8 +34,21 @@ from src.moodle.models import (
     BridgeStatus,
     AuthResponse,
     CoursesResponse,
+    Assignment,
+    CourseAssignments,
+    Activity,
+    AssignmentsResponse,
 )
 from src.services.bridge import BridgeService
+from src.trello.client import TrelloClient, TrelloAPIError
+from src.trello.models import (
+    TrelloBoard,
+    TrelloList,
+    TrelloCard,
+    TrelloSyncResult,
+    SyncedCard,
+)
+
 
 # ============================================================
 # Logging setup — verboso, escrito a tests/logs/
@@ -252,10 +265,24 @@ MOCK_COURSE_CONTENTS = [
     },
 ]
 
+MOCK_TRELLO_BOARDS_DATA = [
+    {"id": "board_1", "name": "Facu", "url": "https://trello.com/b/1/facu", "closed": False},
+    {"id": "board_2", "name": "Other", "url": "https://trello.com/b/2/other", "closed": False},
+]
+
+MOCK_TRELLO_LISTS_DATA = [
+    {"id": "list_1", "name": "Matemática I", "idBoard": "board_1", "closed": False},
+]
+
+MOCK_TRELLO_CARDS_DATA = [
+    {"id": "card_1", "name": "Tarea 1", "desc": "Desc 1", "idList": "list_1", "idBoard": "board_1", "closed": False, "url": "https://trello.com/c/1"},
+]
+
 
 # ============================================================
 # Helpers
 # ============================================================
+
 
 def make_mock_response(json_data, status_code=200):
     """Crea un mock de requests.Response"""
@@ -619,6 +646,175 @@ class TestMoodleBridgeIntegrated:
 
         logger.info(f"  Total: {response.total_courses} cursos")
         logger.info("  ✓ Modelo correcto")
+
+    # --- Trello client and sync tests ---
+
+    @patch("src.trello.client.requests.Session")
+    def test_trello_client_operations(self, mock_session_class):
+        """Prueba las operaciones básicas de TrelloClient usando mocks"""
+        logger.info("TEST: Operaciones de TrelloClient")
+
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+
+        client = TrelloClient(api_key="key", token="token", request_delay=0)
+
+        # 1. Test get_boards
+        mock_session.get.return_value = make_mock_response(MOCK_TRELLO_BOARDS_DATA)
+        boards = client.get_boards()
+        assert len(boards) == 2
+        assert boards[0].name == "Facu"
+        assert boards[0].id == "board_1"
+        logger.info("  ✓ get_boards: OK")
+
+        # 2. Test find_board_by_name
+        board = client.find_board_by_name("facu")
+        assert board is not None
+        assert board.id == "board_1"
+        assert client.find_board_by_name("nonexistent") is None
+        logger.info("  ✓ find_board_by_name: OK")
+
+        # 3. Test get_board_lists
+        mock_session.get.return_value = make_mock_response(MOCK_TRELLO_LISTS_DATA)
+        lists = client.get_board_lists("board_1")
+        assert len(lists) == 1
+        assert lists[0].name == "Matemática I"
+        logger.info("  ✓ get_board_lists: OK")
+
+        # 4. Test get_or_create_list - existing
+        # first it finds, if found returns it
+        mock_session.get.return_value = make_mock_response(MOCK_TRELLO_LISTS_DATA)
+        lst = client.get_or_create_list("board_1", "Matemática I")
+        assert lst.id == "list_1"
+        logger.info("  ✓ get_or_create_list (existente): OK")
+
+        # 5. Test get_or_create_list - new
+        # mock find returns empty lists, then post creates it
+        mock_session.get.return_value = make_mock_response([])
+        mock_session.post.return_value = make_mock_response({"id": "list_new", "name": "Programación I", "idBoard": "board_1"})
+        lst_new = client.get_or_create_list("board_1", "Programación I")
+        assert lst_new.id == "list_new"
+        assert lst_new.name == "Programación I"
+        logger.info("  ✓ get_or_create_list (nueva): OK")
+
+        # 6. Test create_card
+        mock_session.post.return_value = make_mock_response({
+            "id": "card_new", "name": "Nueva Tarea", "desc": "Desc",
+            "idList": "list_1", "idBoard": "board_1", "url": "https://trello.com/c/new"
+        })
+        card = client.create_card("list_1", "Nueva Tarea", "Desc")
+        assert card.id == "card_new"
+        assert card.name == "Nueva Tarea"
+        logger.info("  ✓ create_card: OK")
+
+        # 7. Test update_card
+        mock_session.put.return_value = make_mock_response({
+            "id": "card_1", "name": "Tarea 1 Modificada", "desc": "Desc Mod",
+            "idList": "list_1", "idBoard": "board_1", "url": "https://trello.com/c/1"
+        })
+        updated_card = client.update_card("card_1", name="Tarea 1 Modificada", desc="Desc Mod")
+        assert updated_card.name == "Tarea 1 Modificada"
+        logger.info("  ✓ update_card: OK")
+
+        client.close()
+
+    @patch("src.services.bridge.TrelloClient")
+    def test_bridge_trello_sync(self, mock_trello_client_class):
+        """Prueba el flujo completo de sincronización Moodle -> Trello en BridgeService"""
+        logger.info("TEST: Sincronización Moodle -> Trello")
+
+        # Mock del cliente de Trello
+        mock_trello = MagicMock()
+        mock_trello_client_class.return_value = mock_trello
+
+        # Setup mock Trello responses
+        mock_board = TrelloBoard(**MOCK_TRELLO_BOARDS_DATA[0])
+        mock_trello.find_board_by_name.return_value = mock_board
+        existing_cards = [
+            TrelloCard(id="card_1", name="Tarea Existente", desc="desc", idList="list_1", idBoard="board_1", url="https://trello.com/c/1"),
+            TrelloCard(id="card_archived", name="Nueva Tarea Moodle", desc="desc 2", idList="list_1", idBoard="board_1", url="https://trello.com/c/archived", closed=True)
+        ]
+        mock_trello.get_board_cards.return_value = existing_cards
+        mock_trello.get_or_create_list.side_effect = lambda board_id, name: TrelloList(id=f"list_{name.replace(' ', '_')}", name=name, idBoard=board_id)
+
+        # Mock find_card_by_name
+        def mock_find_card_by_name(board_id, name, cards_cache=None):
+            cards = cards_cache if cards_cache is not None else existing_cards
+            for card in cards:
+                if card.name.lower().strip() == name.lower().strip():
+                    return card
+            return None
+        mock_trello.find_card_by_name.side_effect = mock_find_card_by_name
+
+        # Setup mock created/updated card returns
+        mock_trello.create_card.side_effect = lambda list_id, name, desc, due=None, dueComplete=None: TrelloCard(
+            id=f"card_new_{name.replace(' ', '_')}", name=name, desc=desc, idList=list_id, idBoard="board_1", url=f"https://trello.com/c/{name.replace(' ', '_')}", dueComplete=dueComplete or False
+        )
+        mock_trello.update_card.side_effect = lambda card_id, desc=None, due=None, dueComplete=None, idList=None: TrelloCard(
+            id=card_id, name="Tarea Existente", desc=desc or "", idList=idList or "list_1", idBoard="board_1", url="https://trello.com/c/1", dueComplete=dueComplete or False
+        )
+
+        service = BridgeService()
+        # Mock Moodle client internally in bridge
+        mock_moodle = MagicMock()
+        mock_moodle.is_authenticated = True
+        service._moodle_client = mock_moodle
+
+        # Mock _is_assignment_submitted to return True for Tarea Existente (1001) and False for Nueva Tarea Moodle (1002)
+        service._is_assignment_submitted = lambda assign_id: True if assign_id == 1001 else False
+
+        # Setup moodle assignments responses
+        mock_assignments_response = AssignmentsResponse(
+            success=True,
+            message="OK",
+            total_assignments=2,
+            courses=[
+                CourseAssignments(
+                    id=101,
+                    fullname="COM101 - Matemática I (2025)",
+                    shortname="MAT1",
+                    assignments=[
+                        Assignment(id=1001, cmid=12345, name="Tarea Existente", intro="desc", duedate=1716768000), # should update
+                        Assignment(id=1002, cmid=12346, name="Nueva Tarea Moodle", intro="desc 2", duedate=1716854400), # should be skipped since it is archived
+                    ]
+                )
+            ],
+            activities=[
+                Activity(id=2001, name="Foro de Consultas", modname="forum", course_id=101, course_name="COM101 - Matemática I (2025)", uservisible=True, visible=1)
+            ]
+        )
+
+        with patch.object(service, "moodle_get_assignments", return_value=mock_assignments_response):
+            # Run sync
+            # Override settings to have trello configured
+            with patch("src.services.bridge.settings") as mock_settings:
+                mock_settings.is_trello_configured = True
+                mock_settings.trello_default_board_name = "Facu"
+                mock_settings.trello_request_delay = 0.0
+
+                result = service.trello_sync_assignments(board_name="Facu")
+
+                assert result.success is True
+                assert result.created == 1  # only 1 forum (Foro de Consultas)
+                assert result.updated == 1  # 1 assignment (Tarea Existente)
+                assert result.skipped == 1  # 1 assignment (Nueva Tarea Moodle)
+                assert result.total_synced == 2
+                assert len(result.cards) == 3
+
+                # Verify actions
+                actions = {c.assignment_name: c.action for c in result.cards}
+                assert actions["Tarea Existente"] == "updated"
+                assert actions["Nueva Tarea Moodle"] == "skipped"
+                assert actions["[Foro] Foro de Consultas"] == "created"
+
+                # Verify completion check status
+                completes = {c.assignment_name: c.due_complete for c in result.cards}
+                assert completes["Tarea Existente"] is True
+                assert completes["Nueva Tarea Moodle"] is False
+
+                logger.info(f"  ✓ Sync: {result.created} creadas, {result.updated} actualizadas, {result.skipped} omitidas")
+
+        service.shutdown()
 
 
 # ============================================================

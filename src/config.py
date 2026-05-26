@@ -59,9 +59,17 @@ class Settings(BaseSettings):
     google_client_secret: str = Field(default="", description="Google OAuth Client Secret")
     google_redirect_uri: str = Field(default="", description="Google OAuth Redirect URI")
 
-    # --- Futuro: Trello ---
+    # --- Trello ---
     trello_api_key: str = Field(default="", description="Trello API Key")
     trello_token: str = Field(default="", description="Trello Token")
+    trello_default_board_name: str = Field(
+        default="Facu",
+        description="Nombre del board de Trello a usar por defecto",
+    )
+    trello_request_delay: float = Field(
+        default=0.1,
+        description="Segundos de espera entre requests a Trello",
+    )
 
     model_config = {
         "env_file": str(_env_path),
