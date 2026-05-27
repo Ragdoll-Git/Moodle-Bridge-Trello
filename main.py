@@ -65,6 +65,17 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("No hay credenciales de Moodle en .env. Usa POST /api/moodle/auth para autenticarte.")
 
+    # Verificar conexión con Trello si está configurado
+    if settings.is_trello_configured:
+        logger.info("Credenciales de Trello detectadas, verificando conexión...")
+        trello_status = bridge_service.trello_get_status()
+        if trello_status.get("connected"):
+            logger.info(f"✓ Conexión a Trello verificada exitosamente: {trello_status.get('message')}")
+        else:
+            logger.warning(f"✗ Falló la conexión a Trello: {trello_status.get('message')}")
+    else:
+        logger.info("No hay credenciales de Trello en .env. Habilita Trello agregando las claves al .env.")
+
     yield
 
     # Shutdown

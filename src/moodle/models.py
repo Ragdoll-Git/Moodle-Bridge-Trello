@@ -201,6 +201,7 @@ class BridgeStatus(BaseModel):
     moodle_connected: bool = False
     google_configured: bool = False
     trello_configured: bool = False
+    trello_connected: bool = False
     uptime_seconds: Optional[float] = None
 
 

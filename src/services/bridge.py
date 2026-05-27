@@ -50,6 +50,7 @@ class BridgeService:
         self._start_time = time.time()
         self._moodle_client: Optional[MoodleClient] = None
         self._trello_client: Optional[TrelloClient] = None
+        self._trello_connected: Optional[bool] = None
         self._last_auth_time: Optional[datetime] = None
         self._error_log: list[dict] = []
 
@@ -68,6 +69,7 @@ class BridgeService:
             moodle_connected=self._moodle_client is not None and self._moodle_client.is_authenticated,
             google_configured=settings.is_google_configured,
             trello_configured=settings.is_trello_configured,
+            trello_connected=self._trello_connected is True,
             uptime_seconds=round(time.time() - self._start_time, 1),
         )
 
@@ -391,6 +393,7 @@ class BridgeService:
     def trello_get_status(self) -> dict:
         """Estado real de la conexión con Trello"""
         if not settings.is_trello_configured:
+            self._trello_connected = False
             return {
                 "success": False,
                 "configured": False,
@@ -401,6 +404,7 @@ class BridgeService:
         try:
             client = self._get_trello_client()
             boards = client.get_boards()
+            self._trello_connected = True
             return {
                 "success": True,
                 "configured": True,
@@ -409,6 +413,7 @@ class BridgeService:
                 "boards_count": len(boards),
             }
         except TrelloAPIError as e:
+            self._trello_connected = False
             return {
                 "success": False,
                 "configured": True,

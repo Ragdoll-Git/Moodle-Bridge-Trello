@@ -121,6 +121,21 @@ EOT
 
     # Asegurar permisos de ejecución en OpenRC
     chmod +x "/etc/init.d/$SERVICE_NAME"
+
+    # Configurar tarea de cron horaria para sincronización
+    echo "Configurando sincronización automática por cron (horaria)..."
+    CRON_SCRIPT="/etc/periodic/hourly/moodle-trello-sync"
+    cat <<'EOF' > "$CRON_SCRIPT"
+#!/bin/sh
+# Sincronización automática horaria Moodle -> Trello
+date >> /var/log/moodle-trello-sync.log
+curl -s -X POST http://localhost:8000/api/trello/sync >> /var/log/moodle-trello-sync.log 2>&1
+EOF
+    chmod +x "$CRON_SCRIPT"
+
+    # Habilitar crond
+    rc-update add crond default || true
+    rc-service crond start || true
     
     echo "===================================================================="
     echo "✓ Instalación completada en Alpine Linux."
@@ -129,13 +144,14 @@ EOT
     echo "  1. Editá el archivo de configuración con tus credenciales reales:"
     echo "     nano $INSTALL_DIR/.env"
     echo ""
-    echo "  2. Habilitá y arrancá el servicio de OpenRC:"
+    echo "  2. Habilitá y arrancá el servicio de OpenRC y cron:"
     echo "     rc-update add $SERVICE_NAME default"
     echo "     rc-service $SERVICE_NAME start"
     echo ""
     echo "  3. Para verificar el estado o ver los logs en tiempo real:"
     echo "     rc-service $SERVICE_NAME status"
     echo "     tail -f /var/log/moodle-bridge.log"
+    echo "     tail -f /var/log/moodle-trello-sync.log"
     echo "===================================================================="
 
 else
@@ -161,6 +177,19 @@ EOT
     # Recargar systemd
     systemctl daemon-reload
 
+    # Configurar tarea de cron horaria para sincronización
+    echo "Configurando sincronización automática por cron (horaria)..."
+    CRON_FILE="/etc/cron.d/moodle-bridge"
+    cat <<'EOF' > "$CRON_FILE"
+# Sincronización automática horaria Moodle -> Trello
+0 * * * * root date >> /var/log/moodle-trello-sync.log && curl -s -X POST http://localhost:8000/api/trello/sync >> /var/log/moodle-trello-sync.log 2>&1
+EOF
+    chmod 644 "$CRON_FILE"
+
+    # Asegurar que cron esté habilitado y corriendo
+    systemctl enable cron || true
+    systemctl start cron || true
+ 
     echo "===================================================================="
     echo "✓ Instalación completada en Debian/Ubuntu."
     echo "===================================================================="
@@ -168,12 +197,13 @@ EOT
     echo "  1. Editá el archivo de configuración con tus credenciales reales:"
     echo "     nano $INSTALL_DIR/.env"
     echo ""
-    echo "  2. Habilitá y arrancá el servicio de systemd:"
+    echo "  2. Habilitá y arrancá el servicio de systemd y cron:"
     echo "     systemctl enable $SERVICE_NAME"
     echo "     systemctl start $SERVICE_NAME"
     echo ""
     echo "  3. Para verificar el estado o ver los logs en tiempo real:"
     echo "     systemctl status $SERVICE_NAME"
     echo "     journalctl -u $SERVICE_NAME -f"
+    echo "     tail -f /var/log/moodle-trello-sync.log"
     echo "===================================================================="
 fi

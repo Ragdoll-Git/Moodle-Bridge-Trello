@@ -78,9 +78,30 @@ async function refreshStatus() {
     }
 
     // Trello card
+    const trelloCard = document.getElementById("card-trello");
     const trelloStatus = document.getElementById("trello-status");
-    if (data.trello_configured) {
+    const trelloDetail = document.getElementById("trello-detail");
+
+    if (data.trello_connected) {
+        trelloCard.className = "card card--service card--connected";
+        trelloStatus.textContent = "Conectado";
+        trelloDetail.textContent = "Listo para sincronizar ✓";
+    } else if (data.trello_configured) {
+        trelloCard.className = "card card--service card--error";
         trelloStatus.textContent = "Configurado";
+        trelloDetail.textContent = "Error de conexión";
+    } else {
+        trelloCard.className = "card card--service card--pending";
+        trelloStatus.textContent = "Sin configurar";
+        trelloDetail.textContent = "Falta .env";
+    }
+
+    // Toggle Trello sync button based on connection of both Moodle and Trello
+    const btnSyncTrello = document.getElementById("btn-sync-trello");
+    if (data.moodle_connected && data.trello_connected) {
+        btnSyncTrello.disabled = false;
+    } else {
+        btnSyncTrello.disabled = true;
     }
 
     // Uptime
@@ -175,6 +196,38 @@ function renderCourses(courses) {
 
     // Smooth reveal
     section.style.animation = "fadeIn 0.3s ease";
+}
+
+// ============================================================
+// Trello Sync
+// ============================================================
+
+async function syncTrello() {
+    const btn = document.getElementById("btn-sync-trello");
+    btn.classList.add("btn--loading");
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Sincronizando...`;
+
+    logEvent("info", "Iniciando sincronización Moodle → Trello...");
+
+    const data = await apiCall("POST", "/api/trello/sync");
+
+    btn.classList.remove("btn--loading");
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h14"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H3"/></svg> Sincronizar Trello`;
+
+    if (data && data.success) {
+        const created = data.created || 0;
+        const updated = data.updated || 0;
+        const skipped = data.skipped || 0;
+        logEvent("success", `Sincronización completada con éxito.`);
+        logEvent("info", `Detalle Trello: ${created} creadas, ${updated} actualizadas, ${skipped} omitidas (archivadas)`);
+        if (data.board_name) {
+            logEvent("info", `Board: ${data.board_name}`);
+        }
+    } else {
+        logEvent("error", `Sincronización fallida: ${data?.error || data?.message || "Error desconocido"}`);
+    }
+
+    await refreshStatus();
 }
 
 // ============================================================
