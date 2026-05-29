@@ -86,6 +86,10 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h14"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H3"/></svg>
                     Sincronizar Trello
                 </button>
+                <button class="btn btn--secondary" id="btn-update-code" onclick="updateCode()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Actualizar Código
+                </button>
                 <button class="btn btn--ghost" onclick="refreshStatus()">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                     Actualizar
@@ -165,6 +169,11 @@
                         <span class="endpoint__method endpoint__method--post">POST</span>
                         <code class="endpoint__path">/api/trello/sync</code>
                         <span class="endpoint__desc">Sincronizar tareas de Moodle a Trello</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="endpoint__method endpoint__method--post">POST</span>
+                        <code class="endpoint__path">/api/system/update</code>
+                        <span class="endpoint__desc">Actualizar código desde GitHub y reiniciar servicio</span>
                     </div>
                     <div class="endpoint">
                         <span class="endpoint__method endpoint__method--get">GET</span>

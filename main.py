@@ -121,6 +121,60 @@ async def recent_errors():
         "total": len(bridge_service.recent_errors),
     }
 
+# Actualizar servicio desde GitHub
+@app.post("/api/system/update", tags=["System"])
+async def update_system():
+    """Realiza un git pull y reinicia el servicio del bridge"""
+    import subprocess
+    import threading
+    import time
+    from src.config import PROJECT_ROOT
+
+    try:
+        logger.info("Iniciando actualización del sistema desde GitHub...")
+        pull_result = subprocess.run(
+            ["git", "pull"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=str(PROJECT_ROOT)
+        )
+        logger.info(f"git pull output: {pull_result.stdout}")
+
+        # Programar el reinicio en segundo plano
+        def restart_service():
+            time.sleep(1)
+            if Path("/etc/alpine-release").exists():
+                logger.info("Reiniciando servicio moodle-bridge en Alpine...")
+                subprocess.run(["rc-service", "moodle-bridge", "restart"])
+            else:
+                logger.info("Reiniciando servicio moodle-bridge en Debian/Ubuntu...")
+                subprocess.run(["systemctl", "restart", "moodle-bridge"])
+
+        threading.Thread(target=restart_service, daemon=True).start()
+
+        return {
+            "success": True,
+            "message": "Código actualizado con éxito. Reiniciando servicio...",
+            "output": pull_result.stdout,
+        }
+    except subprocess.CalledProcessError as e:
+        err_msg = f"Error en git pull (código {e.returncode}): {e.stderr}"
+        logger.error(err_msg)
+        return {
+            "success": False,
+            "message": "Error al ejecutar git pull",
+            "error": err_msg,
+        }
+    except Exception as e:
+        err_msg = f"Error inesperado: {str(e)}"
+        logger.error(err_msg)
+        return {
+            "success": False,
+            "message": "Error inesperado al reiniciar",
+            "error": err_msg,
+        }
+
 # Routers de servicios
 app.include_router(moodle_routes.router)
 app.include_router(google_routes.router)

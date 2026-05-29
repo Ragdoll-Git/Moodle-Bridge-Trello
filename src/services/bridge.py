@@ -506,8 +506,29 @@ class BridgeService:
                 list_name = self._clean_course_name(course_assign.fullname)
                 logger.info(f"Procesando curso: '{list_name}' ({len(course_assign.assignments)} assignments)")
 
-                # Obtener o crear lista (lazy loading)
-                trello_list = None
+                # Buscar si la lista existe (incluyendo archivadas/cerradas)
+                existing_list = trello.find_list_by_name(board.id, list_name)
+
+                # Si la lista existe y está cerrada/archivada, omitimos el curso completo
+                if existing_list and existing_list.closed:
+                    logger.info(f"  - Omitido curso completo: '{list_name}' (la lista está archivada en Trello)")
+                    for assign in course_assign.assignments:
+                        card_name = assign.name
+                        due_str = self._timestamp_to_iso(assign.duedate) if assign.duedate else None
+                        synced_cards.append(SyncedCard(
+                            assignment_name=card_name,
+                            course_name=course_assign.fullname,
+                            card_id="",
+                            card_url="",
+                            action="skipped",
+                            due_date=due_str,
+                            due_complete=False,
+                        ))
+                        skipped += 1
+                    continue
+
+                # Obtener o usar lista existente (lazy loading)
+                trello_list = existing_list if (existing_list and not existing_list.closed) else None
 
                 for assign in course_assign.assignments:
                     card_name = assign.name
@@ -519,8 +540,8 @@ class BridgeService:
                         board.id, card_name, cards_cache=existing_cards
                     )
 
-                    if existing and existing.closed:
-                        # Si la tarjeta está archivada en Trello, omitimos la sincronización
+                    # Si ya existe y está completada (dueComplete) o archivada (closed) en Trello, omitir
+                    if existing and (existing.closed or existing.dueComplete):
                         synced_cards.append(SyncedCard(
                             assignment_name=card_name,
                             course_name=course_assign.fullname,
@@ -531,31 +552,34 @@ class BridgeService:
                             due_complete=existing.dueComplete,
                         ))
                         skipped += 1
-                        logger.info(f"  - Omitida: '{card_name}' (ya está archivada en Trello)")
+                        logger.info(f"  - Omitida: '{card_name}' (ya está completada/archivada en Trello)")
                         continue
 
-                    # Obtener la lista de Trello de forma perezosa (solo si hay al menos una tarea activa)
-                    if trello_list is None:
-                        trello_list = trello.get_or_create_list(board.id, list_name)
+                    # Verificar estado de entrega en Moodle
+                    is_completed = self._is_assignment_submitted(assign.id)
 
-                    # Verificar estado de entrega
-                    is_completed = False
-                    if existing and existing.dueComplete:
-                        is_completed = True
-                        logger.debug(f"  Tarea '{card_name}' ya está completada en Trello. Omitiendo consulta a Moodle.")
-                    else:
-                        is_completed = self._is_assignment_submitted(assign.id)
-                        if is_completed:
-                            logger.info(f"  Tarea '{card_name}' está entregada en Moodle.")
+                    # Si la tarjeta NO existe y ya está entregada en Moodle, omitir su creación
+                    if not existing and is_completed:
+                        synced_cards.append(SyncedCard(
+                            assignment_name=card_name,
+                            course_name=course_assign.fullname,
+                            card_id="",
+                            card_url="",
+                            action="skipped",
+                            due_date=due_str,
+                            due_complete=True,
+                        ))
+                        skipped += 1
+                        logger.info(f"  - Omitida creación: '{card_name}' (ya entregada en Moodle)")
+                        continue
 
                     if existing:
-                        # Actualizar tarjeta existente
+                        # Actualizar tarjeta existente sin pasar idList para no moverla de su lista
                         trello.update_card(
                             card_id=existing.id,
                             desc=card_desc,
                             due=due_str,
                             dueComplete=is_completed,
-                            idList=trello_list.id,
                         )
                         synced_cards.append(SyncedCard(
                             assignment_name=card_name,
@@ -569,7 +593,10 @@ class BridgeService:
                         updated += 1
                         logger.info(f"  ↻ Actualizada: '{card_name}' (completada: {is_completed})")
                     else:
-                        # Crear nueva tarjeta
+                        # Crear nueva tarjeta (si no tenemos trello_list aún, la obtenemos/creamos)
+                        if trello_list is None:
+                            trello_list = trello.get_or_create_list(board.id, list_name)
+
                         new_card = trello.create_card(
                             list_id=trello_list.id,
                             name=card_name,
@@ -599,29 +626,44 @@ class BridgeService:
                     card_name = f"[Foro] {activity.name}"
                     card_desc = self._build_activity_description(activity)
 
+                    # Buscar si la lista existe
+                    existing_list = trello.find_list_by_name(board.id, list_name)
+                    if existing_list and existing_list.closed:
+                        synced_cards.append(SyncedCard(
+                            assignment_name=card_name,
+                            course_name=activity.course_name,
+                            card_id="",
+                            card_url="",
+                            action="skipped",
+                            due_complete=False,
+                        ))
+                        skipped += 1
+                        logger.info(f"  - Omitido foro: '{card_name}' (la lista '{list_name}' está archivada en Trello)")
+                        continue
+
+                    # Buscar tarjeta existente (incluyendo archivadas)
                     existing = trello.find_card_by_name(
                         board.id, card_name, cards_cache=existing_cards
                     )
 
-                    if existing and existing.closed:
+                    # Si ya existe y está completada (dueComplete) o archivada (closed) en Trello, omitir
+                    if existing and (existing.closed or existing.dueComplete):
                         synced_cards.append(SyncedCard(
                             assignment_name=card_name,
                             course_name=activity.course_name,
                             card_id=existing.id,
                             card_url=existing.url,
                             action="skipped",
+                            due_complete=existing.dueComplete,
                         ))
                         skipped += 1
-                        logger.info(f"  - Omitida: '{card_name}' (foro archivado en Trello)")
+                        logger.info(f"  - Omitido: '{card_name}' (foro ya completado/archivado en Trello)")
                         continue
-
-                    trello_list = trello.get_or_create_list(board.id, list_name)
 
                     if existing:
                         trello.update_card(
                             card_id=existing.id,
                             desc=card_desc,
-                            idList=trello_list.id,
                         )
                         synced_cards.append(SyncedCard(
                             assignment_name=card_name,
@@ -631,7 +673,12 @@ class BridgeService:
                             action="updated",
                         ))
                         updated += 1
+                        logger.info(f"  ↻ Actualizado foro: '{card_name}'")
                     else:
+                        trello_list = existing_list if (existing_list and not existing_list.closed) else None
+                        if trello_list is None:
+                            trello_list = trello.get_or_create_list(board.id, list_name)
+
                         new_card = trello.create_card(
                             list_id=trello_list.id,
                             name=card_name,
@@ -645,6 +692,7 @@ class BridgeService:
                             action="created",
                         ))
                         created += 1
+                        logger.info(f"  ✓ Creado foro: '{card_name}' en lista '{list_name}'")
 
             total_synced = created + updated
             logger.info(

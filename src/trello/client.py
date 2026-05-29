@@ -110,18 +110,19 @@ class TrelloClient:
     # Lists
     # ============================================================
 
-    def get_board_lists(self, board_id: str) -> list[TrelloList]:
+    def get_board_lists(self, board_id: str, filter_status: str = "all") -> list[TrelloList]:
         """
         Obtiene las listas de un board.
 
         Args:
             board_id: ID del board
+            filter_status: 'open', 'closed', 'all' (default: 'all')
 
         Returns:
             Lista de TrelloList
         """
-        logger.info(f"Obteniendo listas del board {board_id}...")
-        data = self._get(f"/boards/{board_id}/lists", {"filter": "open"})
+        logger.info(f"Obteniendo listas del board {board_id} con filtro {filter_status}...")
+        data = self._get(f"/boards/{board_id}/lists", {"filter": filter_status})
         lists = [TrelloList(**lst) for lst in data]
         logger.info(f"Board tiene {len(lists)} listas")
         return lists
@@ -157,7 +158,7 @@ class TrelloClient:
             TrelloList existente o recién creada
         """
         existing = self.find_list_by_name(board_id, name)
-        if existing:
+        if existing and not existing.closed:
             logger.info(f"Lista existente encontrada: '{existing.name}'")
             return existing
         return self.create_list(board_id, name)

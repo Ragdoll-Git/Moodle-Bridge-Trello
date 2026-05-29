@@ -736,6 +736,7 @@ class TestMoodleBridgeIntegrated:
         ]
         mock_trello.get_board_cards.return_value = existing_cards
         mock_trello.get_or_create_list.side_effect = lambda board_id, name: TrelloList(id=f"list_{name.replace(' ', '_')}", name=name, idBoard=board_id)
+        mock_trello.find_list_by_name.return_value = None
 
         # Mock find_card_by_name
         def mock_find_card_by_name(board_id, name, cards_cache=None):
@@ -813,6 +814,99 @@ class TestMoodleBridgeIntegrated:
                 assert completes["Nueva Tarea Moodle"] is False
 
                 logger.info(f"  ✓ Sync: {result.created} creadas, {result.updated} actualizadas, {result.skipped} omitidas")
+
+        service.shutdown()
+
+    @patch("src.services.bridge.TrelloClient")
+    def test_bridge_trello_sync_skipped_and_closed_list(self, mock_trello_client_class):
+        """Prueba que se omitan listas cerradas y tareas ya completadas en Moodle/Trello"""
+        logger.info("TEST: Sincronización Trello - Listas cerradas y omitidos")
+        
+        mock_trello = MagicMock()
+        mock_trello_client_class.return_value = mock_trello
+
+        # Setup mock Trello board
+        mock_board = TrelloBoard(id="board_1", name="Facu", url="https://trello.com/b/1")
+        mock_trello.find_board_by_name.return_value = mock_board
+
+        # Setup mock Trello lists: one open list, one closed list
+        mock_trello.find_list_by_name.side_effect = lambda board_id, name: (
+            TrelloList(id="list_closed", name=name, idBoard=board_id, closed=True)
+            if "matemática" in name.lower() else None
+        )
+
+        # Setup existing cards: one is already checked (dueComplete=True)
+        existing_cards = [
+            TrelloCard(id="card_checked", name="Tarea Ya Chequeada", desc="desc", idList="list_active", idBoard="board_1", url="https://trello.com/c/checked", dueComplete=True),
+        ]
+        mock_trello.get_board_cards.return_value = existing_cards
+        mock_trello.find_card_by_name.side_effect = lambda board_id, name, cards_cache=None: next(
+            (c for c in (cards_cache or existing_cards) if c.name.lower().strip() == name.lower().strip()), None
+        )
+        mock_trello.get_or_create_list.side_effect = lambda board_id, name: TrelloList(id=f"list_{name.replace(' ', '_')}", name=name, idBoard=board_id)
+        
+        mock_trello.create_card.side_effect = lambda list_id, name, desc, due=None, dueComplete=None: TrelloCard(
+            id=f"card_new_{name.replace(' ', '_')}", name=name, desc=desc, idList=list_id, idBoard="board_1", url=f"https://trello.com/c/{name.replace(' ', '_')}", dueComplete=dueComplete or False
+        )
+
+        service = BridgeService()
+        mock_moodle = MagicMock()
+        mock_moodle.is_authenticated = True
+        service._moodle_client = mock_moodle
+
+        # Moodle submissions: 1001 is submitted, 1002 is not submitted
+        service._is_assignment_submitted = lambda assign_id: True if assign_id == 1001 else False
+
+        # Course 101 has Mathematics (which has a closed list in Trello)
+        # Course 102 has Physics (which has no list in Trello, and contains tasks)
+        mock_assignments_response = AssignmentsResponse(
+            success=True,
+            message="OK",
+            total_assignments=3,
+            courses=[
+                CourseAssignments(
+                    id=101,
+                    fullname="COM101 - Matemática I (2025)",
+                    shortname="MAT1",
+                    assignments=[
+                        Assignment(id=1001, cmid=12345, name="Tarea Curso Omitido", intro="desc", duedate=1716768000),
+                    ]
+                ),
+                CourseAssignments(
+                    id=102,
+                    fullname="COM102 - Física I (2025)",
+                    shortname="FIS1",
+                    assignments=[
+                        Assignment(id=1001, cmid=12347, name="Tarea Ya Chequeada", intro="desc", duedate=1716768000), # exists & checked -> skip
+                        Assignment(id=1001, cmid=12348, name="Tarea Ya Entregada Moodle", intro="desc", duedate=1716768000), # new & submitted -> skip creation
+                        Assignment(id=1002, cmid=12349, name="Tarea Pendiente Nueva", intro="desc", duedate=1716854400), # new & not submitted -> create
+                    ]
+                )
+            ],
+            activities=[]
+        )
+
+        with patch.object(service, "moodle_get_assignments", return_value=mock_assignments_response):
+            with patch("src.services.bridge.settings") as mock_settings:
+                mock_settings.is_trello_configured = True
+                mock_settings.trello_default_board_name = "Facu"
+                mock_settings.trello_request_delay = 0.0
+
+                result = service.trello_sync_assignments(board_name="Facu")
+
+                assert result.success is True
+                assert result.created == 1  # Tarea Pendiente Nueva
+                assert result.updated == 0
+                assert result.skipped == 3  # Tarea Curso Omitido, Tarea Ya Chequeada, Tarea Ya Entregada Moodle
+                assert result.total_synced == 1
+                assert len(result.cards) == 4
+
+                # Verify actions
+                actions = {c.assignment_name: c.action for c in result.cards}
+                assert actions["Tarea Curso Omitido"] == "skipped"
+                assert actions["Tarea Ya Chequeada"] == "skipped"
+                assert actions["Tarea Ya Entregada Moodle"] == "skipped"
+                assert actions["Tarea Pendiente Nueva"] == "created"
 
         service.shutdown()
 
