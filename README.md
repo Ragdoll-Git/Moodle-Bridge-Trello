@@ -1,100 +1,159 @@
 # MoodleAPI-Bridge 🔌
 
-Bridge entre la API de Moodle del **Panel de monitoreo** y servicios externos (Google, Trello).
+Bridge de integración y automatización entre la API de Moodle del **Panel de monitoreo** y servicios externos (Trello).
 
-Servicio FastAPI que se conecta al campus virtual (`https://moodle.example.edu/itu/`) usando tus credenciales de alumno, permite consultar cursos y recursos, y expone una API REST para integrar con otros servicios.
+Servicio desarrollado en FastAPI que actúa como un puente entre el campus virtual (`https://moodle.example.edu/itu/`) y tu tablero de Trello. Permite extraer tus materias, secciones, archivos y de forma inteligente sincronizar todas tus tareas y foros pendientes a Trello de forma automática y manual.
 
-## 🚀 Instalación
+---
 
+## ✨ Características Clave
+
+* **Autenticación Automática**: Inicio de sesión automático y seguro utilizando tu usuario y contraseña de Moodle.
+* **Sincronización Inteligente con Trello**:
+  * **Idempotencia**: Si vuelves a sincronizar, actualiza los datos de las tarjetas existentes (descripción, fecha de entrega) en lugar de duplicarlas.
+  * **Detección de Entrega**: Mapea el estado de entrega en Moodle; si ya entregaste una tarea, la marca automáticamente con el check verde de completada en Trello.
+  * **Evita Rellenar Tableros**: Si la tarea ya fue entregada en Moodle antes de sincronizar por primera vez, no creará la tarjeta en Trello para evitar ruidos molestos.
+  * **Organización Personalizada**: Al actualizar tarjetas, no les altera la lista actual. Esto te permite mover tarjetas a listas personalizadas (ej. *En Progreso*, *Hacer*) y el bridge respetará tu organización.
+  * **Listas Archivadas**: Si archivas una lista completa de una materia en Trello, el bridge detecta que está archivada y omite esa materia de la sincronización.
+* **Dashboard Web Moderno**: Interfaz oscura premium para monitorear el estado de las conexiones, ver tus cursos, revisar el historial de logs en tiempo real y gatillar acciones.
+* **Sincronización Periódica (Cron)**: Tareas de cron horarias pre-configuradas para mantener Trello al día automáticamente.
+* **Actualizador de Código Web**: Botón integrado en el panel para hacer `git pull` de GitHub y reiniciar el servicio de forma automática con un solo clic.
+
+---
+
+## 🚀 Instalación y Configuración
+
+### Opción A: Despliegue Automatizado en Proxmox LXC (Recomendado)
+El proyecto incluye un instalador automatizado (`setup_lxc.sh`) compatible con **Alpine Linux (OpenRC)** y **Debian/Ubuntu (Systemd)**.
+
+1. Clona el repositorio privado dentro de tu LXC usando tu clave SSH:
+   ```bash
+   git clone git@github.com:tu-usuario/MoodleAPI-Bridge.git /opt/moodle-bridge
+   cd /opt/moodle-bridge
+   ```
+2. Otorga permisos y ejecuta el instalador:
+   ```bash
+   chmod +x setup_lxc.sh
+   ./setup_lxc.sh
+   ```
+3. Edita el archivo de configuración `.env` generado:
+   ```bash
+   nano /opt/moodle-bridge/.env
+   ```
+4. Habilita e inicia los servicios:
+   * **Alpine Linux**:
+     ```bash
+     rc-update add moodle-bridge default
+     rc-service moodle-bridge start
+     ```
+   * **Debian/Ubuntu**:
+     ```bash
+     systemctl enable moodle-bridge
+     systemctl start moodle-bridge
+     ```
+
+### Opción B: Instalación Local (Desarrollo)
 ```bash
-# 1. Clonar el repo
-git clone https://github.com/TU_USUARIO/MoodleAPI-Bridge.git
+# 1. Clonar el repositorio
+git clone https://github.com/tu-usuario/MoodleAPI-Bridge.git
 cd MoodleAPI-Bridge
 
-# 2. Crear entorno virtual
-python -m venv venv
-venv\Scripts\activate  # Windows
+# 2. Crear y activar entorno virtual
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/macOS
 
-# 3. Instalar dependencias
+# 3. Instalar requerimientos
 pip install -r requirements.txt
 
-# 4. Configurar credenciales
-copy .env.example .env
-# Editar .env con tu usuario y contraseña de Moodle
-```
+# 4. Configurar variables de entorno
+copy .env.example .env   # Windows
+cp .env.example .env     # Linux/macOS
+# Editar .env con tus credenciales
 
-## ▶️ Uso
-
-```bash
-# Iniciar el servicio
+# 5. Iniciar servidor
 python main.py
-
-# Acceder al monitor web
-# http://localhost:8000
-
-# Documentación interactiva (Swagger)
-# http://localhost:8000/docs
 ```
+
+---
+
+## ⚙️ Configuración (.env)
+
+El archivo `.env` controla el comportamiento de la aplicación:
+
+| Variable | Descripción | Valor Ejemplo |
+|----------|-------------|---------------|
+| `MOODLE_BASE_URL` | URL base del campus | `https://moodle.example.edu/itu` |
+| `MOODLE_USERNAME` | Tu DNI de alumno | `12345678` |
+| `MOODLE_PASSWORD` | Tu contraseña de aulas | `mi_password` |
+| `BRIDGE_HOST` | Host para escuchar peticiones | `0.0.0.0` (Permite acceso en la red del LXC) |
+| `BRIDGE_PORT` | Puerto de escucha | `8000` |
+| `REQUEST_DELAY` | Delay para peticiones Moodle | `1.5` (segundos para evitar rate-limits) |
+| `MAX_RETRIES` | Reintentos ante fallas de red | `3` |
+| `TRELLO_API_KEY` | Key de Desarrollador de Trello | `tu_api_key` |
+| `TRELLO_TOKEN` | Token de usuario de Trello | `tu_token` |
+| `TRELLO_DEFAULT_BOARD_NAME` | Tablero destino | `Facu` |
+| `TRELLO_REQUEST_DELAY` | Delay para peticiones Trello | `0.1` (segundos) |
+
+---
 
 ## 📡 API Endpoints
 
+El servicio expone una API REST interactiva en `/docs` (Swagger UI) y `/redoc` (ReDoc):
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/health` | Estado del servicio |
-| `POST` | `/api/moodle/auth` | Autenticar con Moodle |
-| `GET` | `/api/moodle/courses` | Listar cursos matriculados |
-| `GET` | `/api/moodle/courses/{id}/contents` | Contenidos de un curso |
-| `POST` | `/api/google/sync` | Sync con Google Drive *(próximamente)* |
-| `POST` | `/api/trello/sync` | Sync con Trello *(próximamente)* |
+| `GET` | `/api/health` | Estado de conexión con Moodle, Trello y uptime. |
+| `POST` | `/api/moodle/auth` | Realiza la autenticación manual e inicia sesión. |
+| `GET` | `/api/moodle/courses` | Lista las materias matriculadas. |
+| `GET` | `/api/moodle/courses/{id}/contents` | Detalles, temas y archivos de una materia. |
+| `GET` | `/api/trello/boards` | Lista los tableros disponibles en tu cuenta de Trello. |
+| `GET` | `/api/trello/status` | Verifica y diagnostica la conexión a la API de Trello. |
+| `POST` | `/api/trello/sync` | Gatilla la sincronización inteligente de Moodle a Trello. |
+| `POST` | `/api/system/update` | Realiza un `git pull` y reinicia el servicio automáticamente. |
 
-## 🧪 Tests
+---
+
+## 📅 Sincronización Automática (Cron)
+
+El instalador `setup_lxc.sh` configura una tarea horaria en el sistema para mantener Trello actualizado sin intervención humana:
+
+* **En Alpine (OpenRC)**: Crea un script en `/etc/periodic/hourly/moodle-trello-sync`.
+* **En Debian/Ubuntu (Systemd)**: Agrega la regla en `/etc/cron.d/moodle-bridge`.
+* **Logs del Cron**: Se pueden inspeccionar las ejecuciones en tiempo real corriendo:
+  ```bash
+  tail -f /var/log/moodle-trello-sync.log
+  ```
+
+---
+
+## 🔄 Actualización Remota del Servidor
+
+Para actualizar el bridge a la última versión directamente desde el panel de control web:
+1. Asegúrate de que el LXC esté configurado usando autenticación por **Clave SSH sin frase de contraseña** contra GitHub (para que el comando no se bloquee pidiendo contraseña en segundo plano).
+2. Presiona el botón **Actualizar Código** en el dashboard.
+3. El panel descargará las últimas modificaciones de GitHub y reiniciará el servicio en segundo plano, reconectándose automáticamente una vez que vuelva a estar en línea.
+
+---
+
+## 🧪 Pruebas Unitarias
+
+La suite de pruebas simula las APIs de Moodle y Trello para asegurar que los flujos de sincronización, modelos y endpoints funcionen correctamente.
 
 ```bash
-pytest tests/ -v
+.venv\Scripts\pytest tests/ -v
 ```
+*Los registros detallados se guardan en la carpeta `tests/logs/test_output.log`.*
 
-Los logs de tests se guardan en `tests/logs/`.
-
-## 📁 Estructura
-
-```
-MoodleAPI-Bridge/
-├── main.py              # Entry point FastAPI
-├── src/
-│   ├── config.py        # Configuración (.env)
-│   ├── moodle/          # Cliente API de Moodle
-│   ├── routes/          # Endpoints REST
-│   └── services/        # Lógica de negocio
-├── static/              # Web UI de monitoreo
-└── tests/               # Tests + logs
-```
-
-## ⚙️ Variables de Entorno
-
-| Variable | Descripción | Default |
-|----------|-------------|---------|
-| `MOODLE_BASE_URL` | URL del Moodle | `https://moodle.example.edu/itu` |
-| `MOODLE_USERNAME` | Tu DNI / usuario | — |
-| `MOODLE_PASSWORD` | Tu contraseña | — |
-| `BRIDGE_HOST` | Host del servicio | `0.0.0.0` |
-| `BRIDGE_PORT` | Puerto | `8000` |
-| `REQUEST_DELAY` | Delay entre requests (seg) | `1.5` |
-| `MAX_RETRIES` | Reintentos por request | `3` |
-
-## ⚠️ Seguridad
-
-- **Nunca subas tu `.env`** — está en `.gitignore`
-- El token de Moodle equivale a tus credenciales
-- El delay entre requests evita saturar el servidor de Moodle
-- Solo accedés a tus propios datos de alumno
+---
 
 ## 📋 Roadmap
 
-- [x] Autenticación con Moodle
-- [x] Listado de cursos
-- [x] Contenidos de cursos
-- [x] Web UI de monitoreo
-- [ ] Descarga de archivos
-- [ ] Integración con Google Drive
-- [ ] Integración con Trello
-- [ ] Deploy en Proxmox (Docker/systemd)
+- [x] Autenticación y sesión persistente con Moodle.
+- [x] Obtención de cursos y contenidos del campus.
+- [x] Dashboard Web de monitoreo en tiempo real.
+- [x] Integración bidireccional inteligente con Trello (idempotencia y detección de entregas).
+- [x] Instalador automatizado para Proxmox LXC (Debian/Ubuntu/Alpine).
+- [x] Sincronización horaria automatizada por Cron.
+- [x] Actualizador de sistema y reinicio automático integrado en la web.
+- [ ] Integración con Google Drive para descarga automática de archivos de cursos *(próximamente)*.
