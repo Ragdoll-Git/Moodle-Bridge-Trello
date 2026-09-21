@@ -2,7 +2,7 @@
 
 Bridge de integración y automatización entre la API de Moodle del **Panel de monitoreo** y servicios externos (Trello).
 
-Servicio desarrollado en FastAPI que actúa como un puente entre el campus virtual (`https://moodle.example.edu/itu/`) y tu tablero de Trello. Permite extraer tus materias, secciones, archivos y de forma inteligente sincronizar todas tus tareas y foros pendientes a Trello de forma automática y manual.
+Servicio desarrollado en FastAPI que actúa como un puente entre el campus virtual (`https://moodle.example.edu/itu/`) y tu tablero de Trello. Permite extraer tus materias, secciones, archivos y sincronizar todas las tareas y foros pendientes a Trello de forma automática.
 
 ---
 
@@ -86,13 +86,13 @@ El archivo `.env` controla el comportamiento de la aplicación:
 | `MOODLE_BASE_URL` | URL base del campus | `https://moodle.example.edu/itu` |
 | `MOODLE_USERNAME` | Tu DNI de alumno | `12345678` |
 | `MOODLE_PASSWORD` | Tu contraseña de aulas | `mi_password` |
-| `BRIDGE_HOST` | Host para escuchar peticiones | `0.0.0.0` (Permite acceso en la red del LXC) |
+| `BRIDGE_HOST` | Host para escuchar peticiones | `0.0.0.0`  |
 | `BRIDGE_PORT` | Puerto de escucha | `8000` |
 | `REQUEST_DELAY` | Delay para peticiones Moodle | `1.5` (segundos para evitar rate-limits) |
 | `MAX_RETRIES` | Reintentos ante fallas de red | `3` |
 | `TRELLO_API_KEY` | Key de Desarrollador de Trello | `tu_api_key` |
 | `TRELLO_TOKEN` | Token de usuario de Trello | `tu_token` |
-| `TRELLO_DEFAULT_BOARD_NAME` | Tablero destino | `Facu` |
+| `TRELLO_DEFAULT_BOARD_NAME` | Tablero destino | `tu_tablero` |
 | `TRELLO_REQUEST_DELAY` | Delay para peticiones Trello | `0.1` (segundos) |
 
 ---
