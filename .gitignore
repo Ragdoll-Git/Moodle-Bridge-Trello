@@ -17,6 +17,9 @@ build/
 tests/logs/*.log
 .pytest_cache/
 
+# Logs sueltos (herramientas externas, MCP, etc.)
+*.log
+
 # IDE
 .vscode/
 .idea/

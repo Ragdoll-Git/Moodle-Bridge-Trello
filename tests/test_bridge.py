@@ -86,7 +86,7 @@ logger.info(f"Log file: {log_path}")
 # Mock data — Respuestas simuladas de Moodle
 # ============================================================
 
-MOCK_BASE_URL = "https://moodle.example.edu/itu"
+MOCK_BASE_URL = "https://moodle.example.edu"
 
 MOCK_TOKEN_RESPONSE = {
     "token": "abc123def456mock_token_for_testing",
@@ -101,7 +101,7 @@ MOCK_SITE_INFO = {
     "fullname": "Test User",
     "userid": 42,
     "siteurl": MOCK_BASE_URL,
-    "userpictureurl": "https://moodle.example.edu/itu/pluginfile.php/42/user/icon/f1",
+    "userpictureurl": "https://moodle.example.edu/pluginfile.php/42/user/icon/f1",
     "lang": "es",
     "release": "4.1.2 (Build: 20230512)",
     "version": "2023051200",

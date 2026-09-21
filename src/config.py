@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # --- Moodle ---
     moodle_base_url: str = Field(
-        default="https://moodle.example.edu/itu",
+        default="",
         description="URL base del Moodle (sin trailing slash)",
     )
     moodle_username: str = Field(

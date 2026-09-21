@@ -11,8 +11,8 @@
 #
 #   git clone https://github.com/tu-usuario/MoodleAPI-Bridge.git /opt/moodle-bridge
 #   cd /opt/moodle-bridge
-#   chmod +x setup_lxc.sh
-#   ./setup_lxc.sh
+#   chmod +x setup.sh
+#   ./setup.sh
 # ==============================================================================
 
 set -e
@@ -73,7 +73,7 @@ if [ ! -f ".env" ]; then
 # ========================================
 
 # --- Moodle ---
-MOODLE_BASE_URL=https://moodle.example.edu/itu
+MOODLE_BASE_URL=https://tu-campus.ejemplo.edu/moodle
 MOODLE_USERNAME=tu_dni
 MOODLE_PASSWORD=tu_password
 
