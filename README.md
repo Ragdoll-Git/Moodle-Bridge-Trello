@@ -23,10 +23,10 @@ Servicio desarrollado en FastAPI que actúa como un puente entre tu campus virtu
 
 ## 🚀 Instalación y Configuración
 
-### Opción A: Despliegue Automatizado en Proxmox LXC (Recomendado)
+### Opción A: Despliegue Automatizado en un Contenedor o VM (Recomendado)
 El proyecto incluye un instalador automatizado (`setup.sh`) compatible con **Alpine Linux (OpenRC)** y **Debian/Ubuntu (Systemd)**.
 
-1. Clona el repositorio privado dentro de tu LXC usando tu clave SSH:
+1. Clona el repositorio privado dentro de tu contenedor o VM usando tu clave SSH:
    ```bash
    git clone git@github.com:tu-usuario/MoodleAPI-Bridge.git /opt/moodle-bridge
    cd /opt/moodle-bridge
@@ -130,7 +130,7 @@ El instalador `setup.sh` configura una tarea horaria en el sistema para mantener
 ## 🔄 Actualización Remota del Servidor
 
 Para actualizar el bridge a la última versión directamente desde el panel de control web:
-1. Asegúrate de que el LXC esté configurado usando autenticación por **Clave SSH sin frase de contraseña** contra GitHub (para que el comando no se bloquee pidiendo contraseña en segundo plano).
+1. Asegúrate de que el contenedor o VM esté configurado usando autenticación por **Clave SSH sin frase de contraseña** contra GitHub (para que el comando no se bloquee pidiendo contraseña en segundo plano).
 2. Presiona el botón **Actualizar Código** en el dashboard.
 3. El panel descargará las últimas modificaciones de GitHub y reiniciará el servicio en segundo plano, reconectándose automáticamente una vez que vuelva a estar en línea.
 
@@ -153,7 +153,7 @@ La suite de pruebas simula las APIs de Moodle y Trello para asegurar que los flu
 - [x] Obtención de cursos y contenidos del campus.
 - [x] Dashboard Web de monitoreo en tiempo real.
 - [x] Integración bidireccional inteligente con Trello (idempotencia y detección de entregas).
-- [x] Instalador automatizado para Proxmox LXC (Debian/Ubuntu/Alpine).
+- [x] Instalador automatizado para contenedor o VM (Debian/Ubuntu/Alpine).
 - [x] Sincronización horaria automatizada por Cron.
 - [x] Actualizador de sistema y reinicio automático integrado en la web.
 - [ ] Integración con Google Drive para descarga automática de archivos de cursos *(próximamente)*.

@@ -1,12 +1,12 @@
 #!/bin/sh
 # ==============================================================================
-# MoodleAPI-Bridge — Script de Instalación para Proxmox LXC (Debian/Ubuntu/Alpine)
+# MoodleAPI-Bridge — Script de Instalación para Contenedor o VM (Debian/Ubuntu/Alpine)
 # ==============================================================================
-# Este script automatiza la configuración de la aplicación en contenedores LXC.
+# Este script automatiza la configuración de la aplicación en un contenedor o VM.
 # Detecta automáticamente el sistema operativo (Debian/Ubuntu con Systemd, u
 # Alpine con OpenRC) y crea el servicio de inicio correspondiente.
 #
-# Al ser un repositorio PRIVADO, debés clonar primero el repo dentro del LXC
+# Al ser un repositorio PRIVADO, debés clonar primero el repo dentro del contenedor o VM
 # usando tus credenciales de GitHub y luego ejecutar este script localmente:
 #
 #   git clone https://github.com/tu-usuario/MoodleAPI-Bridge.git /opt/moodle-bridge
@@ -69,7 +69,7 @@ if [ ! -f ".env" ]; then
     echo "Creando plantilla de configuración .env..."
     cat <<EOT > .env
 # ========================================
-# MoodleAPI-Bridge — Configuración LXC
+# MoodleAPI-Bridge — Configuración
 # ========================================
 
 # --- Moodle ---
@@ -79,7 +79,7 @@ MOODLE_PASSWORD=tu_password
 
 # --- Servicio ---
 BRIDGE_PORT=8000
-BRIDGE_HOST=0.0.0.0   # Permite conexiones externas dentro de la red del LXC
+BRIDGE_HOST=0.0.0.0   # Permite conexiones externas dentro de la red del contenedor o VM
 
 # --- Rate Limiting ---
 REQUEST_DELAY=1.5
